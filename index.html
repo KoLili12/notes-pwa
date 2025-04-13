@@ -1,0 +1,329 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="theme-color" content="#4285f4">
+    <meta name="description" content="Простое веб-приложение для управления заметками, работающее в офлайн-режиме">
+    <title>Заметки</title>
+    <link rel="manifest" href="manifest.json">
+    <link rel="apple-touch-icon" href="icons/icon-192x192.png">
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            font-family: 'Roboto', Arial, sans-serif;
+        }
+        body {
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+        header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+            padding-bottom: 10px;
+            border-bottom: 1px solid #ddd;
+        }
+        h1 {
+            color: #4285f4;
+            font-size: 24px;
+        }
+        .offline-indicator {
+            display: none;
+            color: #e53935;
+            font-weight: bold;
+            padding: 5px 10px;
+            border-radius: 4px;
+            background-color: #ffebee;
+        }
+        .note-form {
+            margin-bottom: 20px;
+            display: flex;
+            flex-direction: column;
+        }
+        .note-input {
+            padding: 12px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            font-size: 16px;
+            margin-bottom: 10px;
+            min-height: 100px;
+            resize: vertical;
+        }
+        .add-btn {
+            padding: 10px 20px;
+            background-color: #4285f4;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            font-size: 16px;
+            cursor: pointer;
+            transition: background-color 0.3s;
+        }
+        .add-btn:hover {
+            background-color: #3367d6;
+        }
+        .notes-list {
+            list-style: none;
+        }
+        .note-item {
+            background-color: white;
+            padding: 15px;
+            border-radius: 4px;
+            margin-bottom: 10px;
+            box-shadow: 0 1px 3px rgba(0, 0, 0, 0.12);
+            position: relative;
+        }
+        .note-content {
+            margin-bottom: 10px;
+            word-break: break-word;
+            white-space: pre-wrap;
+        }
+        .note-actions {
+            display: flex;
+            justify-content: flex-end;
+        }
+        .edit-btn, .delete-btn {
+            margin-left: 10px;
+            padding: 5px 10px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 14px;
+        }
+        .edit-btn {
+            background-color: #ffc107;
+            color: #333;
+        }
+        .delete-btn {
+            background-color: #e53935;
+            color: white;
+        }
+        .note-date {
+            font-size: 12px;
+            color: #757575;
+            margin-top: 5px;
+        }
+        @media (max-width: 600px) {
+            body {
+                padding: 10px;
+            }
+            h1 {
+                font-size: 20px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <header>
+        <h1>Заметки</h1>
+        <div id="offlineIndicator" class="offline-indicator">Офлайн-режим</div>
+    </header>
+
+    <div class="note-form">
+        <textarea id="noteInput" class="note-input" placeholder="Введите текст заметки..."></textarea>
+        <button id="addNoteBtn" class="add-btn">Добавить</button>
+    </div>
+
+    <ul id="notesList" class="notes-list"></ul>
+
+    <script>
+        // Инициализация переменных
+        let notes = [];
+        let editingNoteId = null;
+        const noteInput = document.getElementById('noteInput');
+        const addNoteBtn = document.getElementById('addNoteBtn');
+        const notesList = document.getElementById('notesList');
+        const offlineIndicator = document.getElementById('offlineIndicator');
+
+        // Проверка наличия поддержки браузером
+        function checkBrowserSupport() {
+            if (!('indexedDB' in window) && !('localStorage' in window)) {
+                alert('Ваш браузер не поддерживает локальное хранилище данных');
+                return false;
+            }
+            return true;
+        }
+
+        // Функции для работы с локальным хранилищем
+        function saveToStorage() {
+            try {
+                localStorage.setItem('notes', JSON.stringify(notes));
+            } catch (e) {
+                console.error('Ошибка при сохранении в localStorage:', e);
+            }
+        }
+
+        function loadFromStorage() {
+            try {
+                const storedNotes = localStorage.getItem('notes');
+                if (storedNotes) {
+                    notes = JSON.parse(storedNotes);
+                    renderNotes();
+                }
+            } catch (e) {
+                console.error('Ошибка при загрузке из localStorage:', e);
+            }
+        }
+
+        // Функция для создания новой заметки
+        function addNote() {
+            const content = noteInput.value.trim();
+            if (!content) return;
+
+            if (editingNoteId !== null) {
+                // Режим редактирования
+                const index = notes.findIndex(note => note.id === editingNoteId);
+                if (index !== -1) {
+                    notes[index].content = content;
+                    notes[index].updatedAt = new Date().toISOString();
+                }
+                editingNoteId = null;
+                addNoteBtn.textContent = 'Добавить';
+            } else {
+                // Режим добавления
+                const newNote = {
+                    id: Date.now().toString(),
+                    content: content,
+                    createdAt: new Date().toISOString(),
+                    updatedAt: new Date().toISOString()
+                };
+                notes.unshift(newNote);
+            }
+
+            // Очистка ввода и обновление UI
+            noteInput.value = '';
+            saveToStorage();
+            renderNotes();
+        }
+
+        // Функция для удаления заметки
+        function deleteNote(id) {
+            if (confirm('Вы уверены, что хотите удалить эту заметку?')) {
+                notes = notes.filter(note => note.id !== id);
+                saveToStorage();
+                renderNotes();
+
+                // Если удаляемая заметка редактировалась, сбрасываем состояние
+                if (editingNoteId === id) {
+                    editingNoteId = null;
+                    noteInput.value = '';
+                    addNoteBtn.textContent = 'Добавить';
+                }
+            }
+        }
+
+        // Функция для редактирования заметки
+        function editNote(id) {
+            const note = notes.find(note => note.id === id);
+            if (note) {
+                noteInput.value = note.content;
+                editingNoteId = id;
+                addNoteBtn.textContent = 'Сохранить';
+                noteInput.focus();
+            }
+        }
+
+        // Функция форматирования даты
+        function formatDate(dateString) {
+            const date = new Date(dateString);
+            return `${date.toLocaleDateString()} ${date.toLocaleTimeString()}`;
+        }
+
+        // Отображение заметок
+        function renderNotes() {
+            notesList.innerHTML = '';
+            
+            if (notes.length === 0) {
+                notesList.innerHTML = '<li class="note-item">Нет заметок. Добавьте первую!</li>';
+                return;
+            }
+
+            notes.forEach(note => {
+                const li = document.createElement('li');
+                li.className = 'note-item';
+                
+                const content = document.createElement('div');
+                content.className = 'note-content';
+                content.textContent = note.content;
+                li.appendChild(content);
+                
+                const dateInfo = document.createElement('div');
+                dateInfo.className = 'note-date';
+                dateInfo.textContent = `Создано: ${formatDate(note.createdAt)}`;
+                if (note.createdAt !== note.updatedAt) {
+                    dateInfo.textContent += ` | Обновлено: ${formatDate(note.updatedAt)}`;
+                }
+                li.appendChild(dateInfo);
+                
+                const actions = document.createElement('div');
+                actions.className = 'note-actions';
+                
+                const editBtn = document.createElement('button');
+                editBtn.className = 'edit-btn';
+                editBtn.textContent = 'Изменить';
+                editBtn.addEventListener('click', () => editNote(note.id));
+                actions.appendChild(editBtn);
+                
+                const deleteBtn = document.createElement('button');
+                deleteBtn.className = 'delete-btn';
+                deleteBtn.textContent = 'Удалить';
+                deleteBtn.addEventListener('click', () => deleteNote(note.id));
+                actions.appendChild(deleteBtn);
+                
+                li.appendChild(actions);
+                notesList.appendChild(li);
+            });
+        }
+
+        // Обработчики событий
+        addNoteBtn.addEventListener('click', addNote);
+        noteInput.addEventListener('keydown', function(e) {
+            if (e.ctrlKey && e.key === 'Enter') {
+                addNote();
+            }
+        });
+
+        // Проверка состояния подключения
+        function updateOnlineStatus() {
+            if (navigator.onLine) {
+                offlineIndicator.style.display = 'none';
+            } else {
+                offlineIndicator.style.display = 'block';
+            }
+        }
+
+        window.addEventListener('online', updateOnlineStatus);
+        window.addEventListener('offline', updateOnlineStatus);
+
+        // Инициализация приложения
+        function initApp() {
+            if (checkBrowserSupport()) {
+                loadFromStorage();
+                updateOnlineStatus();
+            }
+        }
+
+        // Регистрация Service Worker
+        if ('serviceWorker' in navigator) {
+            window.addEventListener('load', () => {
+                navigator.serviceWorker.register('service-worker.js')
+                    .then(registration => {
+                        console.log('ServiceWorker зарегистрирован:', registration.scope);
+                    })
+                    .catch(error => {
+                        console.log('Ошибка регистрации ServiceWorker:', error);
+                    });
+            });
+        }
+
+        // Запуск приложения
+        initApp();
+    </script>
+</body>
+</html>
