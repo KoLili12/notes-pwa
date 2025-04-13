@@ -121,11 +121,3 @@ http://localhost:8000
 Если вам нужно удалить все сохраненные заметки и настройки:
 1. В Chrome DevTools -> Application -> Storage
 2. Нажмите "Clear site data"
-
-## Лицензия
-
-MIT License
-
-## Разработчик
-
-Имя Фамилия - [your-email@example.com](mailto:your-email@example.com)
